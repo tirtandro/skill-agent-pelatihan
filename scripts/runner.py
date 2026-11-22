@@ -90,18 +90,39 @@ class AgentDesktopRunner:
             self.kernel32.CloseHandle(h_read_pipe)
             raise RuntimeError(f"CreateProcessW failed with Win32 error {err}")
 
-        # Read output
+        # Read output safely without blocking
+        import time
         output_chunks = []
         buf = ctypes.create_string_buffer(4096)
         bytes_read = wintypes.DWORD()
+        total_avail = wintypes.DWORD()
+        
+        start_time = time.time()
         while True:
-            success = self.kernel32.ReadFile(h_read_pipe, buf, 4096, ctypes.byref(bytes_read), None)
-            if not success or bytes_read.value == 0:
+            peek_ok = self.kernel32.PeekNamedPipe(h_read_pipe, None, 0, None, ctypes.byref(total_avail), None)
+            if not peek_ok:
                 break
-            output_chunks.append(buf.raw[:bytes_read.value])
+            if total_avail.value > 0:
+                to_read = min(4096, total_avail.value)
+                success = self.kernel32.ReadFile(h_read_pipe, buf, to_read, ctypes.byref(bytes_read), None)
+                if success and bytes_read.value > 0:
+                    output_chunks.append(buf.raw[:bytes_read.value])
+                else:
+                    break
+            else:
+                wait_res = self.kernel32.WaitForSingleObject(pi.hProcess, 50)
+                if wait_res == 0: # Process finished
+                    # Drain any remaining bytes
+                    if self.kernel32.PeekNamedPipe(h_read_pipe, None, 0, None, ctypes.byref(total_avail), None) and total_avail.value > 0:
+                        to_read = min(4096, total_avail.value)
+                        if self.kernel32.ReadFile(h_read_pipe, buf, to_read, ctypes.byref(bytes_read), None) and bytes_read.value > 0:
+                            output_chunks.append(buf.raw[:bytes_read.value])
+                    break
+                if time.time() - start_time > timeout:
+                    self.kernel32.TerminateProcess(pi.hProcess, 1)
+                    break
 
         self.kernel32.CloseHandle(h_read_pipe)
-        self.kernel32.WaitForSingleObject(pi.hProcess, int(timeout * 1000))
         self.kernel32.CloseHandle(pi.hProcess)
         self.kernel32.CloseHandle(pi.hThread)
 
