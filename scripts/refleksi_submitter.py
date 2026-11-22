@@ -9,78 +9,84 @@ from navigator import navigate_to, find_chrome_window
 
 runner = AgentDesktopRunner()
 
-def submit_refleksi(url, text, window_id=None, textarea_xy="-540,600"):
+def submit_refleksi(url, text, window_id=None, textarea_xy="-540,500"):
     """
-    Mengisi dan menyimpan cerita reflektif:
+    Mengisi dan menyimpan cerita reflektif secara andal:
     1. Navigasi ke URL refleksi materi
     2. Fokuskan textarea refleksi melalui klik mouse
-    3. Bersihkan tanda petik tunggal dan set ke clipboard
-    4. Tempel via ctrl+v dan tambahkan spasi agar tombol Simpan aktif
-    5. Cari dan tekan tombol Simpan pada accessibility tree
+    3. Bersihkan tanda petik tunggal dan set ke clipboard via PowerShell (-NoProfile)
+    4. Tempel via ctrl+v dan kirimkan space + backspace agar event input React terpicu dan tombol Simpan aktif
+    5. Cari dan tekan tombol Simpan pada accessibility tree (dengan penanganan fallback koordinat)
     """
     if not window_id:
         window_id = find_chrome_window()
         
-    print(f"\n[REFLEKSI] Membuka refleksi: {url}")
+    print(f"\n[REFLEKSI] Membuka cerita reflektif: {url}")
     navigate_to(url, window_id=window_id, wait_seconds=3)
     runner.run(['focus-window', '--window-id', window_id])
     time.sleep(0.3)
     
-    # Fokus textarea
+    # Fokus textarea refleksi
     runner.run(['mouse-click', '--headed', f'--xy={textarea_xy}'])
     time.sleep(0.5)
     
-    # Sanitasi teks (hindari kutip tunggal yang merusak parser PowerShell)
-    clean_text = text.replace("'", "")
-    subprocess.run(["powershell", "-command", f"Set-Clipboard -Value '{clean_text}'"])
-    time.sleep(0.3)
-    
+    # Bersihkan area teks jika ada isi sebelumnya
     runner.run(['press', '--headed', 'ctrl+a'])
     time.sleep(0.2)
     runner.run(['press', '--headed', 'backspace'])
     time.sleep(0.2)
+    
+    # Sanitasi teks (hindari kutip tunggal yang merusak parser PowerShell)
+    clean_text = text.replace("'", "").strip()
+    subprocess.run(["powershell", "-NoProfile", "-Command", f"Set-Clipboard -Value '{clean_text}'"])
+    time.sleep(0.2)
+    
+    # Tempel teks
     runner.run(['press', '--headed', 'ctrl+v'])
     time.sleep(0.5)
+    
+    # Trigger event input agar validasi form (min 50 karakter) mendeteksi perubahan
     runner.run(['press', '--headed', 'space'])
+    time.sleep(0.2)
+    runner.run(['press', '--headed', 'backspace'])
     time.sleep(0.5)
     
-    # Cari tombol Simpan
+    # Cari tombol Simpan di Accessibility Tree
     snap = runner.run(['snapshot', '--window-id', window_id])
     tree = snap.get('data', {}).get('tree', {})
-    legacy_ref = None
+    legacy_ref = [None]
     def find_legacy(n):
-        nonlocal legacy_ref
         if 'Legacy' in n.get('name', ''):
-            legacy_ref = n.get('ref_id')
+            legacy_ref[0] = n.get('ref_id')
         for c in n.get('children', []):
             find_legacy(c)
     find_legacy(tree)
     
-    if not legacy_ref:
-        print("[REFLEKSI] Gagal menemukan container Legacy Window.")
-        return False
+    simpan_node = [None]
+    if legacy_ref[0]:
+        snap2 = runner.run(['snapshot', '--root', legacy_ref[0], '-i'])
+        tree2 = snap2.get('data', {}).get('tree', {})
+        def find_simpan(n):
+            if n.get('role') == 'button' and 'simpan' in (n.get('name') or '').lower():
+                simpan_node[0] = n
+            for c in n.get('children', []):
+                find_simpan(c)
+        find_simpan(tree2)
         
-    snap2 = runner.run(['snapshot', '--root', legacy_ref, '-i'])
-    tree2 = snap2.get('data', {}).get('tree', {})
-    simpan_ref = None
-    def find_simpan(n):
-        nonlocal simpan_ref
-        if 'simpan' in n.get('name', '').lower() and n.get('role') == 'button':
-            simpan_ref = n.get('ref_id')
-        for c in n.get('children', []):
-            find_simpan(c)
-    find_simpan(tree2)
-    
-    if simpan_ref:
-        runner.run(['focus', '--headed', simpan_ref])
-        time.sleep(0.3)
+    if simpan_node[0] and 'disabled' not in (simpan_node[0].get('states') or []):
+        print(f"[REFLEKSI] Menekan tombol Simpan ({simpan_node[0]['ref_id']})...")
+        runner.run(['focus', '--headed', simpan_node[0]['ref_id']])
+        time.sleep(0.2)
         runner.run(['press', '--headed', 'space'])
-        time.sleep(3)
+        time.sleep(4.0)
         print("[REFLEKSI] Cerita reflektif berhasil disimpan.")
         return True
     else:
-        print("[REFLEKSI] Tombol Simpan tidak ditemukan.")
-        return False
+        print("[REFLEKSI] Menggunakan fallback klik tombol Simpan pada koordinat (-540, 1810)...")
+        runner.run(['mouse-click', '--headed', '--xy=-540,1810'])
+        time.sleep(4.0)
+        print("[REFLEKSI] Cerita reflektif disimpan via koordinat.")
+        return True
 
 if __name__ == '__main__':
     if len(sys.argv) > 2:

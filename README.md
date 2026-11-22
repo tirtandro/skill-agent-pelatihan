@@ -9,7 +9,7 @@
 
 ---
 
-## 📖 Tentang Skill Ini
+## Tentang Skill Ini
 
 `agent-pelatihan` adalah kumpulan pustaka dan panduan otomasi yang dirancang khusus untuk mempermudah dan mempercepat penyelesaian topik-topik pelatihan pada **Platform Merdeka Mengajar (PMM)**.
 
@@ -17,23 +17,25 @@ Skill ini secara otomatis mengendalikan browser Google Chrome untuk:
 1. **Menonton Video Pembelajaran:** Memutar dan menyelesaikan video YouTube tersemat menggunakan pintasan scrubbing cerdas (`9` + panah kanan).
 2. **Membaca Dokumen & PDF:** Membalik seluruh halaman dokumen dan melakukan scroll hingga status terbaca 100%.
 3. **Mengerjakan Latihan Pemahaman (Kuis):** Menjawab pertanyaan kuis secara otomatis berbasis skoring kata kunci pedagogis Kurikulum Merdeka.
-4. **Mengisi Cerita Reflektif:** Mengunggah esai refleksi yang mendalam, bermutu tinggi, dan kontekstual.
-5. **Menyelesaikan Post Test:** Menganalisis butir soal, mencocokkan kunci jawaban akurat (100% lulus), dan mengumpulkan hasil ujian.
+4. **Mengisi Cerita Reflektif:** Mengunggah esai refleksi yang mendalam, bermutu tinggi, dan kontekstual dengan event sintetis agar form terdeteksi aktif.
+5. **Menyelesaikan Post Test (MUI Carousel Slider):** Menavigasi carousel soal, memilih jawaban target via UIA Focus + Space (100% akurat, kebal text-wrapping drift), menangani modal dialog konfirmasi submit, dan mengambil tangkapan layar kelulusan (`testPassed=true`).
 6. **Verifikasi & Surat Keterangan:** Memverifikasi centang hijau seluruh modul dan memastikan tautan **"Unduh Surat Keterangan Selesai Topik"** telah aktif.
 
 ---
 
-## 🚀 Fitur Unggulan
+## Fitur Unggulan
 
 - **Headed & Accessibility Tree Driven:** Menggunakan Windows UI Automation (UIA) dan input fisik untuk interaksi yang 100% andal dan tidak mudah terblokir.
+- **Carousel-Aware Post Test Engine:** Mendukung slider soal 1-by-1, navigasi tombol Sebelumnya/Selanjutnya, Cek Ulang Jawaban, dan modal konfirmasi submit.
+- **Deterministic Radio Selection:** Seleksi pilihan ganda langsung pada node `radiobutton` via `focus` + `space`, menghilangkan resiko salah klik akibat pembungkusan teks pilihan yang panjang.
 - **Scrubbing Video Cepat:** Tidak perlu menunggu video 10-20 menit; diselesaikan dalam hitungan detik dengan validasi playback backend.
 - **Pedagogical Keyword Engine:** Algoritma skoring cerdas untuk kuis yang mengutamakan nilai-nilai Kurikulum Merdeka, Pemikiran Ki Hadjar Dewantara, dan Taksonomi SOLO.
-- **Kebal Focus Trap:** Dilengkapi mekanisme pelepasan fokus Omnibox Chrome otomatis.
+- **Kebal Focus Trap:** Dilengkapi mekanisme pelepasan fokus Omnibox Chrome otomatis (`escape` + neutral click).
 - **Regulasi PMM Terkini:** Mengikuti aturan baru di mana **Aksi Nyata tidak lagi diwajibkan**, melainkan langsung berhak mendapatkan **Surat Keterangan Selesai Topik**.
 
 ---
 
-## 📂 Struktur Direktori
+## Struktur Direktori
 
 ```
 E:\Projects 2\skill-agent-pelatihan\
@@ -47,18 +49,19 @@ E:\Projects 2\skill-agent-pelatihan\
 │   ├── video_runner.py               # Otomasi video pembelajaran YouTube embed
 │   ├── text_runner.py                # Otomasi membaca dan membalik halaman materi bacaan/PDF
 │   ├── quiz_solver.py                # Engine pengerjaan Latihan Pemahaman berbasis skor
-│   ├── refleksi_submitter.py         # Form filler Cerita Reflektif dengan paste clipboard
-│   ├── posttest_solver.py            # Engine pengerjaan Post Test modul akurasi 100%
+│   ├── refleksi_submitter.py         # Form filler Cerita Reflektif dengan paste & synthetic event
+│   ├── posttest_solver.py            # Engine pengerjaan Post Test Carousel & Modal Konfirmasi
+│   ├── orchestrator.py               # Pipeline otomasi modul end-to-end
 │   └── verifier.py                   # Pemeriksa status topik dan pengambil screenshot bukti
 │
 └── references/                       # Basis data pengetahuan & panduan teknis
     ├── pmm_pedagogy_guide.md         # Rangkuman konsep pedagogi KHD, SOLO, Asesmen & PM
-    └── troubleshooting_guide.md      # Solusi kendala teknis nyata (PowerShell, UIA, Coordinates)
+    └── troubleshooting_guide.md      # Solusi kendala teknis nyata (Carousel, Radio wrapping, Modal)
 ```
 
 ---
 
-## 🛠️ Persyaratan Sistem
+## Persyaratan Sistem
 
 - **Sistem Operasi:** Windows 10 atau Windows 11 (64-bit).
 - **Python:** Versi 3.10 atau lebih tinggi.
@@ -67,7 +70,7 @@ E:\Projects 2\skill-agent-pelatihan\
 
 ---
 
-## ⚡ Panduan Cepat (Quick Start)
+## Panduan Cepat (Quick Start)
 
 ### 1. Menjalankan Otomasi Video
 Untuk menuntaskan video pembelajaran pada materi yang sedang aktif:
@@ -92,66 +95,80 @@ python scripts/quiz_solver.py
 python scripts/refleksi_submitter.py "https://guru.kemendikdasmen.go.id/pelatihan-mandiri/refleksi/<ID>" "Teks refleksi Anda di sini..."
 ```
 
-### 5. Memverifikasi Topik & Mengambil Bukti Screenshot
+### 5. Menyelesaikan Post Test Carousel
+```python
+from scripts.posttest_solver import solve_posttest_carousel
+
+kunci_jawaban = {
+    1: "rehat, refleksi, rencana",
+    2: "Pengetahuan yang komprehensif",
+    3: "Salah"
+}
+solve_posttest_carousel(
+    "https://guru.kemendikdasmen.go.id/pelatihan-mandiri/modul/96/post-test",
+    kunci_jawaban,
+    proof_dir="./bukti",
+    proof_prefix="bukti_posttest3"
+)
+```
+
+### 6. Memverifikasi Topik & Mengambil Bukti Screenshot
 ```bash
 python scripts/verifier.py "https://guru.kemendikdasmen.go.id/pelatihan-mandiri/topik/<TOPIK_ID>"
 ```
 
 ---
 
-## 📊 Contoh Alur Penuh (End-to-End Orchestration)
+## Contoh Alur Penuh (End-to-End Orchestration)
 
-Berikut adalah contoh skrip orkestrasi lengkap untuk menyelesaikan satu modul pelatihan secara otomatis:
+Berikut adalah contoh skrip menggunakan `orchestrator.py` untuk menyelesaikan satu modul pelatihan secara otomatis:
 
 ```python
-import time
-from scripts.navigator import navigate_to
-from scripts.video_runner import complete_video
-from scripts.text_runner import complete_text_material
-from scripts.quiz_solver import solve_quiz
-from scripts.refleksi_submitter import submit_refleksi
-from scripts.posttest_solver import solve_posttest
-from scripts.verifier import verify_topic
+from scripts.orchestrator import run_module_pipeline
 
-# 1. Buka materi video & selesaikan
-complete_video("https://guru.kemendikdasmen.go.id/pelatihan-mandiri/video/100?recordProgress=true")
-
-# 2. Buka materi bacaan & balik halaman
-complete_text_material("https://guru.kemendikdasmen.go.id/pelatihan-mandiri/text/200?recordProgress=true")
-
-# 3. Kerjakan Latihan Pemahaman
-navigate_to("https://guru.kemendikdasmen.go.id/pelatihan-mandiri/quiz/300")
-solve_quiz()
-
-# 4. Kirim Cerita Reflektif
-submit_refleksi(
-    "https://guru.kemendikdasmen.go.id/pelatihan-mandiri/refleksi/300",
-    "Melalui pembelajaran ini, saya memahami pentingnya pendekatan yang berkesadaran, bermakna, dan menyenangkan bagi murid."
-)
-
-# 5. Kerjakan Post Test Modul
-kunci_jawaban = [
-    "Kompetensi literasi",
-    "di depan memberi teladan",
-    "diri sendiri",
-    "memiliki keyakinan untuk dapat terus berkembang"
+# 1. Definisikan urutan materi modul
+materi_modul = [
+    ('video', 'https://guru.kemendikdasmen.go.id/pelatihan-mandiri/video/266?...recordProgress=true'),
+    ('video', 'https://guru.kemendikdasmen.go.id/pelatihan-mandiri/video/267?...recordProgress=true'),
+    ('text', 'https://guru.kemendikdasmen.go.id/pelatihan-mandiri/text/118?...recordProgress=true'),
+    ('quiz', 'https://guru.kemendikdasmen.go.id/pelatihan-mandiri/quiz/463?...'),
+    ('refleksi', 'https://guru.kemendikdasmen.go.id/pelatihan-mandiri/refleksi/463?...', 'Refleksi saya...'),
+    ('video', 'https://guru.kemendikdasmen.go.id/pelatihan-mandiri/video/268?...recordProgress=true'),
+    ('video', 'https://guru.kemendikdasmen.go.id/pelatihan-mandiri/video/269?...recordProgress=true'),
+    ('text', 'https://guru.kemendikdasmen.go.id/pelatihan-mandiri/text/128?...recordProgress=true'),
+    ('text', 'https://guru.kemendikdasmen.go.id/pelatihan-mandiri/text/119?...recordProgress=true'),
+    ('quiz', 'https://guru.kemendikdasmen.go.id/pelatihan-mandiri/quiz/464?...'),
+    ('refleksi', 'https://guru.kemendikdasmen.go.id/pelatihan-mandiri/refleksi/464?...', 'Refleksi saya...')
 ]
-solve_posttest("https://guru.kemendikdasmen.go.id/pelatihan-mandiri/modul/24/post-test", kunci_jawaban, proof_dir="./bukti")
 
-# 6. Verifikasi Topik Selesai & Unduh Surat
-verify_topic("https://guru.kemendikdasmen.go.id/pelatihan-mandiri/topik/1", proof_dir="./bukti")
+# 2. Definisikan kunci jawaban Post Test
+kunci_posttest = {
+    1: "Melakukan refleksi dengan memetakan situasi, mencari tahu apa yang perlu dilakukan, lalu melakukan aksi.",
+    2: "Carilah teman",
+    3: "Memeriksa finalisasi kesiapan perangkat pembelajaran",
+    4: "bisa lebih tenang dan jujur saat berdialog dengan diri"
+}
+
+# 3. Jalankan pipeline modul hingga selesai
+run_module_pipeline(
+    modul_url="https://guru.kemendikdasmen.go.id/pelatihan-mandiri/modul/97",
+    materials_sequence=materi_modul,
+    posttest_answers=kunci_posttest,
+    proof_dir="./bukti",
+    modul_label="modul4"
+)
 ```
 
 ---
 
-## 💡 Best Practices & Tips
+## Best Practices & Tips
 
 1. **Jaga Visibilitas Jendela Chrome:** Pastikan jendela Chrome tidak di-minimize saat script dijalankan, agar UIA dapat merender accessibility tree secara akurat.
-2. **Koordinat Multi-Monitor:** Jika Chrome dibuka di monitor sekunder (posisi x negatif), koordinat klik tetap bekerja secara proporsional berkat sistem koordinat desktop terpadu.
-3. **Penyusunan Refleksi:** Hindari jawaban pendek satu kata ("sudah", "baik"). Tulis refleksi bermakna 2-3 kalimat agar akun pendidik memiliki reputasi aktivitas yang unggul.
+2. **Koordinat Multi-Monitor:** Jika Chrome dibuka di monitor sekunder (posisi x negatif), runner tetap bekerja proporsional berkat sistem koordinat desktop terpadu.
+3. **Penyusunan Refleksi:** Hindari jawaban pendek satu kata ("sudah", "baik"). Tulis refleksi bermakna minimal 50 karakter agar validasi platform terpenuhi dan tombol Simpan aktif.
 
 ---
 
-## 📜 Lisensi & Kontribusi
+## Lisensi & Kontribusi
 
 Dibuat untuk memfasilitasi peningkatan kompetensi guru di Indonesia melalui pemanfaatan AI Agent yang efisien dan bertanggung jawab.

@@ -12,9 +12,10 @@ Skill ini menyediakan panduan operasional dan kumpulan pustaka otomasi lengkap u
 ## 1. Arsitektur & Prinsip Kerja
 
 Otomatisasi bekerja pada browser Google Chrome yang terhubung dengan utilitas desktop automation (`agent-desktop-win32-x64.exe`). Alur otomasi memadukan:
-1. **Accessibility Tree Inspection (UIA):** Membaca struktur DOM, tautan modul, status pengerjaan, tombol aksi, butir soal, dan pilihan ganda secara deterministik.
+1. **Accessibility Tree Inspection (UIA):** Membaca struktur DOM, tautan modul, status pengerjaan, tombol aksi, butir soal, dan pilihan ganda secara deterministik tanpa terpengaruh posisi scroll.
 2. **Headed Synthetic Input Delivery:** Mengirimkan ketukan tombol keyboard dan koordinat klik mouse fisik untuk berinteraksi dengan elemen web yang sensitif (seperti iframe YouTube, penampil PDF berhalaman, dan textarea refleksi).
-3. **Domain-Specific Pedagogical Knowledge:** Memilih jawaban kuis dan post test berdasarkan prinsip pendidikan Kurikulum Merdeka, pemikiran Ki Hadjar Dewantara, Taksonomi SOLO/Bloom, serta asesmen autentik.
+3. **Deterministic Option Selection (Focus + Space):** Menghindari bias koordinat atau text wrapping drift pada pilihan ganda dengan menavigasikan fokus langsung ke node `radiobutton` dan mengirimkan penekanan `space`.
+4. **Domain-Specific Pedagogical Knowledge:** Memilih jawaban kuis dan post test berdasarkan prinsip pendidikan Kurikulum Merdeka, pemikiran Ki Hadjar Dewantara, Taksonomi SOLO/Bloom, serta asesmen autentik.
 
 ---
 
@@ -28,7 +29,7 @@ flowchart TD
     Decision -->|"Video Pembelajaran"| Video["Putar Video + Shortcut Scrubbing (9 & Right Arrow)"]
     Decision -->|"Bahan Bacaan / PDF"| Text["Klik Pembalik Halaman + Pagedown Scroll"]
     Decision -->|"Latihan Pemahaman"| Quiz["Analisis Opsi Jawaban Pedagogis + Simpan"]
-    Decision -->|"Cerita Reflektif"| Refleksi["Input Refleksi Berkualitas + Paste + Simpan"]
+    Decision -->|"Cerita Reflektif"| Refleksi["Input Refleksi Berkualitas + Paste + Synthetic Event"]
     
     Video --> CheckMateri{"Materi Berikutnya?"}
     Text --> CheckMateri
@@ -36,17 +37,26 @@ flowchart TD
     Refleksi --> CheckMateri
     
     CheckMateri -->|"Masih Ada"| Decision
-    CheckMateri -->|"Selesai"| PostTest["Buka Post Test Modul"]
+    CheckMateri -->|"Selesai"| PostTest["Buka Post Test Modul (Carousel)"]
     
-    PostTest --> SolvePT["Jawab Soal Pilihan Ganda (100% Akurat)"]
-    SolvePT --> SubmitPT["Cek Ulang & Kumpulkan Jawaban"]
-    SubmitPT --> VerifyModul["Verifikasi Modul Selesai & Ambil Screenshot"]
-    VerifyModul --> CheckTopic{"Semua Modul Topik Selesai?"}
+    PostTest --> Rewind["Kembali ke Soal 1"]
+    Rewind --> SolveQ["Jawab Soal via UIA Focus + Space"]
+    SolveQ --> NextQ{"Soal Terakhir?"}
+    NextQ -->|"Belum"| ClickNext["Klik Selanjutnya"] --> SolveQ
+    NextQ -->|"Sudah"| ReviewScreen["Klik Cek Ulang Jawaban"]
     
+    ReviewScreen --> Kumpulkan["Klik Kumpulkan Jawaban"]
+    Kumpulkan --> ModalConfirm["Konfirmasi Modal Dialog Submit"]
+    ModalConfirm --> VerifyPass["Verifikasi Layar Lulus (testPassed=true)"]
+    VerifyPass --> ScreenshotPT["Ambil Bukti Post Test Lulus"]
+    ScreenshotPT --> BackModul["Klik Kembali ke Modul"]
+    BackModul --> VerifyModul["Screenshot Bukti Modul Selesai"]
+    
+    VerifyModul --> CheckTopic{"Semua Modul Selesai?"}
     CheckTopic -->|"Belum"| NextModul["Lanjut ke Modul Berikutnya"]
     NextModul --> Inspect
     CheckTopic -->|"Sudah"| Final["Verifikasi Tombol 'Unduh Surat' Aktif"]
-    Final --> Screenshot["Simpan Bukti Kelulusan & Buat Laporan"]
+    Final --> ScreenshotFinal["Simpan Bukti Kelulusan & Buat Laporan"]
 ```
 
 ---
@@ -68,7 +78,7 @@ flowchart TD
   2. Klik fisik di tengah video player (misal koordinat `--xy=-654,401`) untuk memulai pemutaran.
   3. Tunggu 2 detik, lalu kirimkan penekanan tombol `9` (melompati pemutaran ke menit/detik ke-90%).
   4. Kirimkan penekanan tombol `right` arrow sebanyak 15 kali dengan jeda 0.15 detik untuk menggeser timeline video ke detik-detik terakhir.
-  5. Beri jeda tunggu 4 detik agar event playback selesai dan status tersimpan di backend PMM.
+  5. Beri jeda tunggu minimal 4 detik agar event playback selesai dan status tersimpan di backend PMM.
 
 ### C. Otomatisasi Bahan Bacaan & Dokumen PDF
 - Bahan bacaan PDF di PMM mensyaratkan pengguna membuka setiap lembar dokumen agar progres terhitung tuntas.
@@ -84,35 +94,36 @@ flowchart TD
   1. Ambil snapshot UIA pada container `Chrome Legacy Window`.
   2. Temukan seluruh node `radiobutton` beserta nama teks dan `ref_id`-nya.
   3. Nilai setiap opsi menggunakan fungsi skoring pedagogis:
-     - Berikan bobot positif tinggi (+5) untuk kata kunci Kurikulum Merdeka (seperti: *refleksi, peserta didik, kebutuhan murid, kolaboratif, kontekstual, bermakna, mendalam, umpan balik, evaluasi*).
-     - Berikan penalti (-10) untuk kata kunci otoriter/pasif (seperti: *menghukum, menegur, mengabaikan, menyalahkan, hafalan, ceramah tradisional*).
-     - Berikan bonus proporsional panjang kalimat.
+     - Berikan bobot positif tinggi (+5) untuk kata kunci Kurikulum Merdeka (*refleksi, peserta didik, kebutuhan murid, kolaboratif, kontekstual, bermakna, mendalam, umpan balik, evaluasi*).
+     - Berikan penalti (-10) untuk kata kunci otoriter/pasif (*menghukum, menegur, mengabaikan, menyalahkan, hafalan, ceramah tradisional*).
   4. Pilih radio button dengan skor tertinggi (`focus` -> `space`).
   5. Klik tombol `Jawab`, lalu klik `Lanjut`.
   6. Pada akhir kuis, klik tombol `Kembali ke Materi`.
 
 ### E. Pengisian Cerita Reflektif
-- Setiap materi memiliki form refleksi dengan textarea kosong.
+- Setiap materi memiliki form refleksi dengan textarea kosong (minimal 50 karakter).
 - **Prosedur Eksekusi:**
-  1. Fokuskan textarea refleksi melalui klik fisik (misal koordinat `--xy=-540,600`).
-  2. Siapkan teks refleksi pedagogis yang mendalam (minimal 2-3 kalimat berbobot).
-  3. **Penting:** Bersihkan tanda petik tunggal (`'`) dari string teks untuk menghindari syntax error pada PowerShell saat dimasukkan ke clipboard.
-  4. Set clipboard melalui PowerShell: `Set-Clipboard -Value "<clean_text>"`.
+  1. Fokuskan textarea refleksi melalui klik fisik (misal koordinat `--xy=-540,500`).
+  2. Siapkan teks refleksi pedagogis yang mendalam.
+  3. Bersihkan tanda petik tunggal (`'`) dari string teks untuk menghindari syntax error pada PowerShell saat dimasukkan ke clipboard.
+  4. Set clipboard melalui PowerShell: `powershell -NoProfile -Command "Set-Clipboard -Value '<clean_text>'"`.
   5. Kirimkan `ctrl+a` -> `backspace` -> `ctrl+v`.
-  6. Kirimkan penekanan tombol `space` (spasi) sekali agar event form input terpicu dan tombol `Simpan` aktif.
-  7. Cari tombol `Simpan` di UIA tree, lalu fokuskan dan tekan `space`.
+  6. Kirimkan penekanan tombol `space` diikuti `backspace` untuk memicu event form change React dan mengaktifkan tombol `Simpan`.
+  7. Cari tombol `Simpan` di UIA tree (periksa agar tidak berstatus `disabled`), lalu fokuskan dan tekan `space` (atau fallback klik ke `-540, 1810`).
 
-### F. Pengerjaan Post Test Modul (100% Akurat)
-- Post Test menentukan kelulusan modul dan terdiri dari 5 hingga 10 pertanyaan pilihan ganda.
+### F. Pengerjaan Post Test Modul (Carousel & Modal Konfirmasi)
+- Post Test di PMM disusun dalam bentuk **MUI Carousel Slider** (1 soal per slide tampilan).
 - **Prosedur Eksekusi:**
   1. Buka URL Post Test modul, klik tombol `Mulai Kerjakan Post Test`.
-  2. Ekstrak seluruh pertanyaan dan pilihan jawaban dari tree UIA.
-  3. Cocokkan target jawaban presisi terhadap nama radio button (mendukung pencocokan parsial maupun exact match).
-  4. Pilih opsi yang sesuai untuk setiap nomor pertanyaan.
-  5. Klik tombol `Cek Ulang Jawaban` / `Selanjutnya`.
-  6. Pada halaman reviu jawaban, klik tombol `Kumpulkan`.
-  7. Tangkap screenshot hasil post test (`bukti_posttest_result.png`).
-  8. Klik tombol `Kembali ke Modul`.
+  2. Tekan tombol `Sebelumnya` berulang kali untuk memastikan berada pada Soal 1.
+  3. Untuk setiap soal (1 s.d. N):
+     - Cari node `radiobutton` aktif yang sesuai dengan kunci jawaban (bisa berupa teks opsi atau indeks huruf A/B/C/D).
+     - Fokuskan node dan kirimkan tombol `space` (`focus` -> `space`).
+     - Tekan tombol `Selanjutnya` (atau pada soal terakhir, tekan `Cek Ulang Jawaban`).
+  4. Pada halaman reviu seluruh jawaban, tekan tombol `Kumpulkan`.
+  5. **Modal Konfirmasi:** Tunggu munculnya modal dialog konfirmasi ("Apakah Anda yakin..."), cari tombol `Kumpulkan` di dalam modal, lalu fokuskan dan tekan `space`.
+  6. Tunggu navigasi ke halaman hasil evaluasi (`.../post-test/passed?...testPassed=true`) dan simpan tangkapan layar bukti kelulusan (`bukti_posttest_result.png`).
+  7. Tekan tombol `Kembali ke Modul` dan ambil screenshot modul selesai (`bukti_selesai_modul.png`).
 
 ### G. Verifikasi Kelulusan Topik & Surat Keterangan
 - Regulasi terkini PMM: **Aksi Nyata tidak lagi diwajibkan** untuk menyelesaikan topik pelatihan mandiri.
@@ -121,20 +132,21 @@ flowchart TD
   1. Buka halaman utama topik: `https://guru.kemendikdasmen.go.id/pelatihan-mandiri/topik/<TOPIK_ID>`.
   2. Verifikasi bahwa seluruh modul telah berstatus centang hijau (Selesai).
   3. Verifikasi bahwa tombol `Unduh Surat` (link menuju `/surat-selesai-belajar`) telah muncul dan berstatus aktif.
-  4. Ambil tangkapan layar penuh jendela Chrome sebagai bukti verifikasi kelulusan topik.
+  4. Buka halaman Surat Selesai Belajar dan ambil tangkapan layar penuh sebagai bukti resmi.
 
 ---
 
-## 4. Struktur Modul & Skrip Pembantu (`scripts/`)
+## 4. Struktur Pustaka Skrip (`scripts/`)
 
-Pustaka skrip yang disertakan pada folder `scripts/`:
+Pustaka skrip modular yang disertakan pada folder `scripts/`:
 - `runner.py`: Wrapper pemanggil CLI `agent-desktop-win32-x64.exe`.
-- `navigator.py`: Utilitas navigasi tab dan URL Chrome yang bersih dari focus trap.
-- `video_runner.py`: Fungsi otomasi penuntasan video pembelajaran YouTube embed.
-- `text_runner.py`: Fungsi otomasi membaca dan membalik halaman materi bacaan/PDF.
-- `quiz_solver.py`: Algoritma penyelesaian otomatis Latihan Pemahaman berbasis kata kunci.
-- `refleksi_submitter.py`: Generator dan submitter Cerita Reflektif.
-- `posttest_solver.py`: Engine penyelesaian Post Test dengan pencocokan kunci jawaban akurat.
+- `navigator.py`: Utilitas navigasi URL Chrome dengan pembersihan omnibox focus trap dan deteksi window multi-display.
+- `video_runner.py`: Otomasi penuntasan video pembelajaran YouTube embed via keyboard shortcuts.
+- `text_runner.py`: Otomasi membaca dan membalik halaman materi bacaan/PDF.
+- `quiz_solver.py`: Algoritma penyelesaian otomatis Latihan Pemahaman berbasis skoring pedagogis.
+- `refleksi_submitter.py`: Generator dan submitter Cerita Reflektif dengan dispatch event sintetis.
+- `posttest_solver.py`: Engine penyelesaian Post Test berbasis Carousel Slider dan penanganan Modal Dialog Konfirmasi.
+- `orchestrator.py`: Pipeline otomatisasi end-to-end modul (inspeksi materi -> tuntas materi -> kuis -> refleksi -> post test).
 - `verifier.py`: Inspektor status topik, modul, dan pengambil screenshot bukti penyelesaian.
 
 ---
@@ -143,4 +155,4 @@ Pustaka skrip yang disertakan pada folder `scripts/`:
 
 Tersedia berkas referensi pedagogis lengkap di folder `references/`:
 - `pmm_pedagogy_guide.md`: Rangkuman komprehensif teori KHD, Taksonomi SOLO, Asesmen Autentik, dan Model Pembelajaran Mendalam.
-- `troubleshooting_guide.md`: Kumpulan solusi error umum (PowerShell parameter error, UIA AMBIGUOUS_TARGET, omnibox trap, multi-monitor display coordinates).
+- `troubleshooting_guide.md`: Kumpulan solusi error umum (PowerShell parameter error, UIA AMBIGUOUS_TARGET, omnibox trap, offset drift multi-line radio options, modal confirmation dialogs).
