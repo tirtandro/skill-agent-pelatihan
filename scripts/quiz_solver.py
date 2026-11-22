@@ -131,6 +131,7 @@ def solve_quiz(window_id=None, max_iterations=20):
     q_num = 1
     tried_options_for_q = set()
     attempts_on_current_q = 0
+    empty_radios_count = 0
     
     print(f"\n{'='*60}")
     print("[QUIZ SOLVER ADAPTIF] Memulai penyelesaian Latihan Pemahaman...")
@@ -145,7 +146,7 @@ def solve_quiz(window_id=None, max_iterations=20):
         q_stem, radios, btns, statuses = extract_quiz_state(leg)
         
         # 1. Cek apakah kuis telah selesai sepenuhnya
-        kembali_key = next((k for k in btns.keys() if 'kembali ke materi' in k), None)
+        kembali_key = next((k for k in btns.keys() if any(w in k for w in ['kembali ke materi', 'kembali ke modul', 'kembali', 'selesai'])), None)
         if kembali_key and not radios:
             print(f"[QUIZ] Seluruh soal selesai! Menekan '{kembali_key}'...")
             runner.run(['focus', '--headed', btns[kembali_key]])
@@ -168,6 +169,7 @@ def solve_quiz(window_id=None, max_iterations=20):
             q_num += 1
             tried_options_for_q.clear()
             attempts_on_current_q = 0
+            empty_radios_count = 0
             continue
             
         # 3. Tangani jika jawaban salah ('Coba Lagi' muncul)
@@ -182,8 +184,14 @@ def solve_quiz(window_id=None, max_iterations=20):
             q_stem, radios, btns, statuses = extract_quiz_state(leg)
             
         if not radios:
+            empty_radios_count += 1
+            if empty_radios_count >= 3:
+                print("[QUIZ] Tidak ada soal/opsi lagi terdeteksi. Kuis telah selesai!")
+                return True
             time.sleep(1.0)
             continue
+            
+        empty_radios_count = 0
             
         # 4. Filter opsi yang sudah terbukti gagal
         available_radios = [r for r in radios if r[0] not in tried_options_for_q]
