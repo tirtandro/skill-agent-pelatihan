@@ -1,6 +1,6 @@
 ---
 name: agent-pelatihan
-description: Otomatisasi end-to-end penyelesaian Pelatihan Mandiri Platform Merdeka Mengajar (PMM) dan pelatihan guru berbasis web, mencakup penelusuran topik/modul, penyelesaian video YouTube PMM, bahan bacaan/PDF, kuis Latihan Pemahaman dengan skoring pedagogis, penulisan Cerita Reflektif berbobot, pengerjaan Post Test 100% lulus, hingga verifikasi dan pengunduhan Surat Keterangan Selesai Topik.
+description: Otomatisasi end-to-end penyelesaian Pelatihan Mandiri Platform Merdeka Mengajar (PMM) dan pelatihan guru berbasis web, mencakup penelusuran topik/modul, penyelesaian video YouTube PMM, bahan bacaan/PDF, kuis Latihan Pemahaman dengan skoring pedagogis adaptif & elimination loop, penulisan Cerita Reflektif berbobot, pengerjaan Post Test 100% lulus bergaransi dengan dynamic carousel inspection, hingga verifikasi dan pengunduhan Surat Keterangan Selesai Topik.
 ---
 
 # Agent Pelatihan: Otomatisasi Pelatihan Mandiri PMM
@@ -15,7 +15,8 @@ Otomatisasi bekerja pada browser Google Chrome yang terhubung dengan utilitas de
 1. **Accessibility Tree Inspection (UIA):** Membaca struktur DOM, tautan modul, status pengerjaan, tombol aksi, butir soal, dan pilihan ganda secara deterministik tanpa terpengaruh posisi scroll.
 2. **Headed Synthetic Input Delivery:** Mengirimkan ketukan tombol keyboard dan koordinat klik mouse fisik untuk berinteraksi dengan elemen web yang sensitif (seperti iframe YouTube, penampil PDF berhalaman, dan textarea refleksi).
 3. **Deterministic Option Selection (Focus + Space):** Menghindari bias koordinat atau text wrapping drift pada pilihan ganda dengan menavigasikan fokus langsung ke node `radiobutton` dan mengirimkan penekanan `space`.
-4. **Domain-Specific Pedagogical Knowledge:** Memilih jawaban kuis dan post test berdasarkan prinsip pendidikan Kurikulum Merdeka, pemikiran Ki Hadjar Dewantara, Taksonomi SOLO/Bloom, serta asesmen autentik.
+4. **Adaptive Elimination & Retry Loop (Latihan Pemahaman):** Menganalisis teks pertanyaan untuk mendeteksi soal bertipe negasi (*kecuali*, *bukan*), mengeliminasi opsi salah secara dinamis saat muncul tombol *"Coba Lagi"*, dan mencoba opsi sisa hingga status hijau *"Lanjut"* tercapai (garansi 100% tuntas tanpa penalti).
+5. **Dynamic Carousel Harvester & Fuzzy Matcher (Post Test):** Mengekstrak butir soal carousel secara langsung dari DOM, mencocokkan target jawaban secara toleran (fuzzy matching), menstabilkan modal dialog submission dengan polling guard, serta memvalidasi kelulusan (`testPassed=true`) secara ketat.
 
 ---
 
@@ -28,7 +29,7 @@ flowchart TD
     
     Decision -->|"Video Pembelajaran"| Video["Putar Video + Shortcut Scrubbing (9 & Right Arrow)"]
     Decision -->|"Bahan Bacaan / PDF"| Text["Klik Pembalik Halaman + Pagedown Scroll"]
-    Decision -->|"Latihan Pemahaman"| Quiz["Analisis Opsi Jawaban Pedagogis + Simpan"]
+    Decision -->|"Latihan Pemahaman"| Quiz["Ekstraksi Soal + Deteksi Negasi + Adaptive Elimination Loop"]
     Decision -->|"Cerita Reflektif"| Refleksi["Input Refleksi Berkualitas + Paste + Synthetic Event"]
     
     Video --> CheckMateri{"Materi Berikutnya?"}
@@ -40,15 +41,17 @@ flowchart TD
     CheckMateri -->|"Selesai"| PostTest["Buka Post Test Modul (Carousel)"]
     
     PostTest --> Rewind["Kembali ke Soal 1"]
-    Rewind --> SolveQ["Jawab Soal via UIA Focus + Space"]
+    Rewind --> Harvest["Ekstrak Soal & Opsi dari DOM Carousel"]
+    Harvest --> SolveQ["Jawab Soal via UIA Focus + Space (Fuzzy Matcher)"]
     SolveQ --> NextQ{"Soal Terakhir?"}
     NextQ -->|"Belum"| ClickNext["Klik Selanjutnya"] --> SolveQ
     NextQ -->|"Sudah"| ReviewScreen["Klik Cek Ulang Jawaban"]
     
     ReviewScreen --> Kumpulkan["Klik Kumpulkan Jawaban"]
-    Kumpulkan --> ModalConfirm["Konfirmasi Modal Dialog Submit"]
-    ModalConfirm --> VerifyPass["Verifikasi Layar Lulus (testPassed=true)"]
-    VerifyPass --> ScreenshotPT["Ambil Bukti Post Test Lulus"]
+    Kumpulkan --> ModalConfirm["Polling Modal Dialog Submit (s/d 4s)"]
+    ModalConfirm --> VerifyPass{"Verifikasi testPassed=true?"}
+    VerifyPass -->|"Lulus Sempurna"| ScreenshotPT["Simpan Bukti Post Test Lulus"]
+    VerifyPass -->|"Belum Lulus"| AutoRetry["Auto-Retry & Koreksi Butir Soal"] --> PostTest
     ScreenshotPT --> BackModul["Klik Kembali ke Modul"]
     BackModul --> VerifyModul["Screenshot Bukti Modul Selesai"]
     
@@ -88,17 +91,18 @@ flowchart TD
   3. Kirimkan penekanan `pagedown` sebanyak 5 kali untuk memastikan scroll area tercapai.
   4. Beri jeda 2 detik sebelum melanjutkan ke item berikutnya.
 
-### D. Pengerjaan Latihan Pemahaman (Kuis Materi)
+### D. Pengerjaan Latihan Pemahaman Cerdas (Adaptive Elimination Loop)
 - Setiap akhir materi terdapat 1 sampai 6 soal kuis latihan pemahaman pilihan ganda.
 - **Prosedur Eksekusi:**
   1. Ambil snapshot UIA pada container `Chrome Legacy Window`.
-  2. Temukan seluruh node `radiobutton` beserta nama teks dan `ref_id`-nya.
-  3. Nilai setiap opsi menggunakan fungsi skoring pedagogis:
-     - Berikan bobot positif tinggi (+5) untuk kata kunci Kurikulum Merdeka (*refleksi, peserta didik, kebutuhan murid, kolaboratif, kontekstual, bermakna, mendalam, umpan balik, evaluasi*).
-     - Berikan penalti (-10) untuk kata kunci otoriter/pasif (*menghukum, menegur, mengabaikan, menyalahkan, hafalan, ceramah tradisional*).
-  4. Pilih radio button dengan skor tertinggi (`focus` -> `space`).
-  5. Klik tombol `Jawab`, lalu klik `Lanjut`.
-  6. Pada akhir kuis, klik tombol `Kembali ke Materi`.
+  2. Ekstrak kalimat soal (`question_stem`) untuk mendeteksi apakah soal bertipe **negasi/pengecualian** (`kecuali`, `bukan`, `tidak termasuk`, `salah`).
+  3. Hitung skor tiap opsi:
+     - Soal Reguler: Berikan bobot positif tinggi (+5) untuk kata kunci Kurikulum Merdeka (*refleksi, peserta didik, kebutuhan murid, kolaboratif, kontekstual, bermakna, mendalam, umpan balik, evaluasi*), dan penalti (-10) untuk kata otoriter/pasif.
+     - Soal Negasi: Balikkan prioritas bobot (mencari opsi yang bertentangan atau tidak memiliki unsur positif).
+  4. Pilih radio button dengan skor tertinggi (`focus` -> `space`), lalu tekan tombol `Jawab`.
+  5. **Mekanisme Eliminasi Dinamis (Zero-Fail Guarantee):**
+     - Jika jawaban kurang tepat (muncul tombol *"Coba Lagi"*), script memasukkan opsi tersebut ke dalam daftar hitam (*blacklist*), menekan *"Coba Lagi"*, dan langsung memilih opsi alternatif terbaik berikutnya.
+     - Proses berulang otomatis hingga jawaban benar dan tombol *"Lanjut"* / *"Kembali ke Materi"* aktif.
 
 ### E. Pengisian Cerita Reflektif
 - Setiap materi memiliki form refleksi dengan textarea kosong (minimal 50 karakter).
@@ -111,19 +115,21 @@ flowchart TD
   6. Kirimkan penekanan tombol `space` diikuti `backspace` untuk memicu event form change React dan mengaktifkan tombol `Simpan`.
   7. Cari tombol `Simpan` di UIA tree (periksa agar tidak berstatus `disabled`), lalu fokuskan dan tekan `space` (atau fallback klik ke `-540, 1810`).
 
-### F. Pengerjaan Post Test Modul (Carousel & Modal Konfirmasi)
+### F. Pengerjaan Post Test Resilien (Carousel Slider & Modal Submission)
 - Post Test di PMM disusun dalam bentuk **MUI Carousel Slider** (1 soal per slide tampilan).
 - **Prosedur Eksekusi:**
   1. Buka URL Post Test modul, klik tombol `Mulai Kerjakan Post Test`.
   2. Tekan tombol `Sebelumnya` berulang kali untuk memastikan berada pada Soal 1.
-  3. Untuk setiap soal (1 s.d. N):
-     - Cari node `radiobutton` aktif yang sesuai dengan kunci jawaban (bisa berupa teks opsi atau indeks huruf A/B/C/D).
+  3. Ekstrak struktur soal dan seluruh radio button aktif dari DOM Carousel.
+  4. Untuk setiap soal (1 s.d. N):
+     - Cari node `radiobutton` aktif menggunakan **Fuzzy Matcher** (toleran terhadap perbedaan spasi, kapitalisasi, dan tanda baca).
+     - Jika tidak ada target eksplisit, gunakan seleksi semantik dinamis berdasarkan teks slide.
      - Fokuskan node dan kirimkan tombol `space` (`focus` -> `space`).
      - Tekan tombol `Selanjutnya` (atau pada soal terakhir, tekan `Cek Ulang Jawaban`).
-  4. Pada halaman reviu seluruh jawaban, tekan tombol `Kumpulkan`.
-  5. **Modal Konfirmasi:** Tunggu munculnya modal dialog konfirmasi ("Apakah Anda yakin..."), cari tombol `Kumpulkan` di dalam modal, lalu fokuskan dan tekan `space`.
-  6. Tunggu navigasi ke halaman hasil evaluasi (`.../post-test/passed?...testPassed=true`) dan simpan tangkapan layar bukti kelulusan (`bukti_posttest_result.png`).
-  7. Tekan tombol `Kembali ke Modul` dan ambil screenshot modul selesai (`bukti_selesai_modul.png`).
+  5. Pada halaman reviu seluruh jawaban, tekan tombol `Kumpulkan`.
+  6. **Modal Konfirmasi Polling Guard:** Lakukan polling hingga 4 detik untuk memastikan modal dialog *"Apakah Anda yakin..."* telah terbuka sempurna, lalu fokuskan tombol `Kumpulkan` di dalam modal dan tekan `space`.
+  7. **Strict Pass Verification:** Verifikasi apakah halaman memuat indikator kelulusan (*"Luar biasa! Pemahaman Anda sangat baik"* atau URL `...testPassed=true`). Simpan screenshot bukti kelulusan (`bukti_posttest_result.png`).
+  8. Tekan tombol `Kembali ke Modul` dan ambil screenshot modul selesai (`bukti_selesai_modul.png`).
 
 ### G. Verifikasi Kelulusan Topik & Surat Keterangan
 - Regulasi terkini PMM: **Aksi Nyata tidak lagi diwajibkan** untuk menyelesaikan topik pelatihan mandiri.
@@ -143,16 +149,16 @@ Pustaka skrip modular yang disertakan pada folder `scripts/`:
 - `navigator.py`: Utilitas navigasi URL Chrome dengan pembersihan omnibox focus trap dan deteksi window multi-display.
 - `video_runner.py`: Otomasi penuntasan video pembelajaran YouTube embed via keyboard shortcuts.
 - `text_runner.py`: Otomasi membaca dan membalik halaman materi bacaan/PDF.
-- `quiz_solver.py`: Algoritma penyelesaian otomatis Latihan Pemahaman berbasis skoring pedagogis.
+- `quiz_solver.py`: Engine Latihan Pemahaman cerdas dengan deteksi soal negasi dan adaptive elimination loop bergaransi 100% benar.
 - `refleksi_submitter.py`: Generator dan submitter Cerita Reflektif dengan dispatch event sintetis.
-- `posttest_solver.py`: Engine penyelesaian Post Test berbasis Carousel Slider dan penanganan Modal Dialog Konfirmasi.
-- `orchestrator.py`: Pipeline otomatisasi end-to-end modul (inspeksi materi -> tuntas materi -> kuis -> refleksi -> post test).
+- `posttest_solver.py`: Engine Post Test resilien dengan DOM carousel harvester, fuzzy option matching, robust modal confirmation, dan strict pass checking.
+- `orchestrator.py`: Pipeline otomatisasi end-to-end modul (inspeksi materi -> tuntas materi -> kuis -> refleksi -> post test dengan auto-retry).
 - `verifier.py`: Inspektor status topik, modul, dan pengambil screenshot bukti penyelesaian.
 
 ---
 
-## 5. Ringkasan Kunci Jawaban Referensi (Topik Populer)
+## 5. Ringkasan Kunci Jawaban Referensi & Panduan Teknis
 
 Tersedia berkas referensi pedagogis lengkap di folder `references/`:
 - `pmm_pedagogy_guide.md`: Rangkuman komprehensif teori KHD, Taksonomi SOLO, Asesmen Autentik, dan Model Pembelajaran Mendalam.
-- `troubleshooting_guide.md`: Kumpulan solusi error umum (PowerShell parameter error, UIA AMBIGUOUS_TARGET, omnibox trap, offset drift multi-line radio options, modal confirmation dialogs).
+- `troubleshooting_guide.md`: Kumpulan solusi error umum (PowerShell parameter error, UIA AMBIGUOUS_TARGET, omnibox trap, offset drift multi-line radio options, modal confirmation dialogs, dan penanganan soal negasi).

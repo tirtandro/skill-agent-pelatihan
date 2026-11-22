@@ -78,7 +78,7 @@ def discover_module_items(modul_url, window_id=None):
     print(f"[ORCHESTRATOR] Ditemukan: {len(items['videos'])} Video, {len(items['texts'])} Teks, {len(items['quizzes'])} Kuis, {len(items['refleksi'])} Refleksi, Post Test: {'Ada' if items['posttest'] else 'Belum Aktif'}")
     return items
 
-def run_module_pipeline(modul_url, materials_sequence, posttest_answers, window_id=None, proof_dir=None, modul_label="modul"):
+def run_module_pipeline(modul_url, materials_sequence, posttest_answers=None, window_id=None, proof_dir=None, modul_label="modul", max_posttest_retries=2):
     """
     Menjalankan seluruh rangkaian modul secara otomatis dari awal hingga post test:
     - materials_sequence: list of tuples:
@@ -86,7 +86,7 @@ def run_module_pipeline(modul_url, materials_sequence, posttest_answers, window_
         ('text', url)
         ('quiz', url)
         ('refleksi', url, default_text)
-    - posttest_answers: dict or list jawaban post test
+    - posttest_answers: dict or list jawaban post test (opsional, jika None menggunakan penalaran dinamis)
     """
     if not window_id:
         window_id = find_chrome_window()
@@ -120,24 +120,35 @@ def run_module_pipeline(modul_url, materials_sequence, posttest_answers, window_
     navigate_to(modul_url, window_id=window_id, wait_seconds=3)
     time.sleep(2)
     
-    # 3. Eksekusi Post Test
+    # 3. Eksekusi Post Test dengan Verifikasi Kelulusan & Auto-Retry Loop
     posttest_url = f"{modul_url}/post-test" if not '/post-test' in modul_url else modul_url
-    # Temukan link post test langsung dari halaman modul
     items = discover_module_items(modul_url, window_id=window_id)
     if items['posttest'] and items['posttest']['url']:
         posttest_url = items['posttest']['url']
         
     proof_prefix = f"bukti_{modul_label}"
-    success = solve_posttest_carousel(
-        posttest_url,
-        posttest_answers,
-        window_id=window_id,
-        proof_dir=proof_dir,
-        proof_prefix=proof_prefix
-    )
     
-    print(f"[ORCHESTRATOR] Pipeline {modul_label} selesai dengan sukses!\n")
-    return success
+    passed = False
+    for pt_attempt in range(1, max_posttest_retries + 1):
+        print(f"\n[ORCHESTRATOR] Menjalankan Post Test Percobaan {pt_attempt}/{max_posttest_retries}...")
+        passed = solve_posttest_carousel(
+            posttest_url,
+            posttest_answers,
+            window_id=window_id,
+            proof_dir=proof_dir,
+            proof_prefix=proof_prefix
+        )
+        if passed:
+            break
+        print(f"[ORCHESTRATOR WARNING] Percobaan post test ke-{pt_attempt} belum lulus. Mencoba kembali...")
+        time.sleep(3.0)
+        
+    if passed:
+        print(f"[ORCHESTRATOR] Pipeline {modul_label} selesai dengan SUKSES (LULUS 100%)!\n")
+    else:
+        print(f"[ORCHESTRATOR ERROR] Pipeline {modul_label} selesai tetapi Post Test belum lulus penuh.\n")
+        
+    return passed
 
 if __name__ == '__main__':
-    print("Orchestrator Library Loaded.")
+    print("Enhanced Orchestrator Library Loaded.")

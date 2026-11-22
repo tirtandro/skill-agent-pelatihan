@@ -170,3 +170,31 @@ def walk(n):
         walk(c)
 walk(tree)
 ```
+
+
+---
+
+## 10. Penanganan Soal Negasi ("Kecuali" / "Bukan") & Adaptive Elimination Loop pada Kuis
+
+### Gejala:
+Script Latihan Pemahaman terus-menerus memilih jawaban salah pada soal yang memuat kata *"kecuali"*, *"bukan"*, atau *"pernyataan yang salah"*.
+
+### Penyebab:
+Scoring heuristik berbasis kata kunci secara default memprioritaskan opsi dengan nilai positif pedagogis tertinggi, padahal soal negasi mencari opsi pengecualian (yang bertentangan dengan prinsip positif).
+
+### Solusi:
+1. Periksa teks pertanyaan (`question_stem`) untuk keberadaan kata kunci negasi (`is_negation_question()`).
+2. Jika terdeteksi negasi, balikkan arah skoring (`is_negation=True`).
+3. Terapkan **Adaptive Elimination Loop**: bila muncul tombol *"Coba Lagi"* (jawaban salah), masukkan opsi tersebut ke dalam himpunan opsi tereliminasi (`tried_options`), tekan *"Coba Lagi"*, dan pilih opsi terbaik berikutnya hingga status hijau *"Lanjut"* tercapai.
+
+---
+
+## 11. Fuzzy Option Matching & Strict Pass Verification pada Post Test
+
+### Gejala:
+Post test gagal menjawab butir soal tertentu karena string target jawaban berbeda spasi atau format dengan nama radio button di PMM (`Tidak menemukan radio button yang cocok...`), atau modul dianggap selesai padahal hasil post test adalah `Belum Lulus`.
+
+### Solusi:
+1. Gunakan algoritma pencocokan toleran (*Fuzzy Matching*) dengan token overlap ratio / Jaccard similarity kata pada teks yang telah dinormalisasi.
+2. Terapkan fallback semantik dinamis jika target teks tidak cocok dengan opsi mana pun.
+3. Selalu jalankan `verify_submission_pass()` setelah submit modal konfirmasi untuk memeriksa keberadaan teks *"Luar biasa! Pemahaman Anda sangat baik"* atau indikator kelulusan sebelum menandai modul berhasil.

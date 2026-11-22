@@ -16,9 +16,9 @@
 Skill ini secara otomatis mengendalikan browser Google Chrome untuk:
 1. **Menonton Video Pembelajaran:** Memutar dan menyelesaikan video YouTube tersemat menggunakan pintasan scrubbing cerdas (`9` + panah kanan).
 2. **Membaca Dokumen & PDF:** Membalik seluruh halaman dokumen dan melakukan scroll hingga status terbaca 100%.
-3. **Mengerjakan Latihan Pemahaman (Kuis):** Menjawab pertanyaan kuis secara otomatis berbasis skoring kata kunci pedagogis Kurikulum Merdeka.
+3. **Mengerjakan Latihan Pemahaman Cerdas (Kuis):** Menjawab pertanyaan kuis secara otomatis dengan analisis konteks pertanyaan (deteksi negasi/pengecualian) dan **Adaptive Elimination Loop** (otomatis mencoba opsi lain bila muncul *"Coba Lagi"* hingga 100% tuntas).
 4. **Mengisi Cerita Reflektif:** Mengunggah esai refleksi yang mendalam, bermutu tinggi, dan kontekstual dengan event sintetis agar form terdeteksi aktif.
-5. **Menyelesaikan Post Test (MUI Carousel Slider):** Menavigasi carousel soal, memilih jawaban target via UIA Focus + Space (100% akurat, kebal text-wrapping drift), menangani modal dialog konfirmasi submit, dan mengambil tangkapan layar kelulusan (`testPassed=true`).
+5. **Menyelesaikan Post Test Resilien (MUI Carousel Slider):** Menavigasi carousel soal, ekstraksi soal dinamis dari DOM, pemilihan jawaban via Fuzzy Option Matcher dan UIA Focus + Space, penanganan modal dialog submit dengan polling guard, serta verifikasi ketat kelulusan (`testPassed=true`).
 6. **Verifikasi & Surat Keterangan:** Memverifikasi centang hijau seluruh modul dan memastikan tautan **"Unduh Surat Keterangan Selesai Topik"** telah aktif.
 
 ---
@@ -26,7 +26,8 @@ Skill ini secara otomatis mengendalikan browser Google Chrome untuk:
 ## Fitur Unggulan
 
 - **Headed & Accessibility Tree Driven:** Menggunakan Windows UI Automation (UIA) dan input fisik untuk interaksi yang 100% andal dan tidak mudah terblokir.
-- **Carousel-Aware Post Test Engine:** Mendukung slider soal 1-by-1, navigasi tombol Sebelumnya/Selanjutnya, Cek Ulang Jawaban, dan modal konfirmasi submit.
+- **Adaptive Elimination & Retry Loop (Kuis):** Bebas macet dan bergaransi 100% benar; otomatis membaca pertanyaan bertipe negasi (*kecuali*, *bukan*), mengeliminasi opsi salah saat muncul tombol *"Coba Lagi"*, dan memilih opsi sisa hingga tombol *"Lanjut"* aktif.
+- **Carousel-Aware Post Test Engine dengan Strict Pass Check:** Mendukung slider soal 1-by-1, ekstraksi butir soal dinamis dari DOM, Fuzzy Option Matcher, polling modal konfirmasi submit, dan validasi kelulusan hasil post test.
 - **Deterministic Radio Selection:** Seleksi pilihan ganda langsung pada node `radiobutton` via `focus` + `space`, menghilangkan resiko salah klik akibat pembungkusan teks pilihan yang panjang.
 - **Scrubbing Video Cepat:** Tidak perlu menunggu video 10-20 menit; diselesaikan dalam hitungan detik dengan validasi playback backend.
 - **Pedagogical Keyword Engine:** Algoritma skoring cerdas untuk kuis yang mengutamakan nilai-nilai Kurikulum Merdeka, Pemikiran Ki Hadjar Dewantara, dan Taksonomi SOLO.
